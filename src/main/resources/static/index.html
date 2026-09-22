@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Photo Locker System</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #fafafa; }
+        .box { background: white; padding: 25px; border: 1px solid #ddd; max-width: 450px; margin-bottom: 20px; box-shadow: 2px 2px 5px #eee; }
+        .hide { display: none; }
+        button { background: #007bff; color: white; border: none; padding: 8px 12px; cursor: pointer; margin-top: 5px;}
+        button:hover { background: #0056b3; }
+        input { display: block; margin-bottom: 12px; width: 100%; padding: 6px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <h2>🔒 Company Photo Vault</h2>
+
+    <!-- LOGIN SCREEN -->
+    <div id="loginCard" class="box">
+        <h3>User Sign In</h3>
+        <label>Username:</label>
+        <input type="text" id="userInput" placeholder="Type username...">
+        <label>Password:</label>
+        <input type="password" id="passInput" placeholder="Type password...">
+        <button onclick="doLogin()">Log In / Register</button>
+    </div>
+
+    <!-- MAIN INTERFACE -->
+    <div id="appCard" class="box hide">
+        <h3>Welcome: <span id="currentUserLabel" style="color:blue;"></span></h3>
+        <button onclick="doLogout()" style="background:#dc3545;">Log Out</button>
+        <hr style="margin:20px 0; border:0; border-top:1px solid #ccc;">
+        
+        <h4>Upload Image File</h4>
+        <input type="file" id="fileField">
+        <button onclick="submitPhoto()">Upload to Folder</button>
+        <p id="statusMsg" style="font-weight:bold; color:green;"></p>
+        <hr style="margin:20px 0; border:0; border-top:1px solid #ccc;">
+
+        <h4>Your Saved Files Directory</h4>
+        <button onclick="refreshFolder()" style="background:#28a745;">Refresh List</button>
+        <ul id="fileDisplayList" style="padding-left: 20px; line-height: 2;"></ul>
+    </div>
+
+    <script>
+        let currentActiveUser = "";
+
+        function doLogin() {
+            const user = document.getElementById("userInput").value.trim();
+            const pass = document.getElementById("passInput").value.trim(); 
+            
+            if(!user || !pass) { alert("Please complete both input fields"); return; }
+
+            // FIXED: Send parameters cleanly inside the URL query string
+            fetch("/api/vault/login?username=" + encodeURIComponent(user) + "&password=" + encodeURIComponent(pass), { 
+                method: "POST" 
+            })
+            .then(res => res.text())
+            .then(status => {
+                if(status === "OK") {
+                    currentActiveUser = user;
+                    document.getElementById("currentUserLabel").innerText = user;
+                    document.getElementById("loginCard").classList.add("hide");
+                    document.getElementById("appCard").classList.remove("hide");
+                    refreshFolder();
+                } else {
+                    alert("Login Failed. Server sent back: " + status);
+                }
+            });
+        }
+        
+        function doLogout() {
+            currentActiveUser = "";
+            document.getElementById("userInput").value = "";
+            document.getElementById("passInput").value = "";
+            document.getElementById("statusMsg").innerText = "";
+            document.getElementById("loginCard").classList.remove("hide");
+            document.getElementById("appCard").classList.add("hide");
+        }
+
+        function submitPhoto() {
+            const fileChooser = document.getElementById("fileField");
+            if(fileChooser.files.length === 0) { alert("Please choose a file first"); return; }
+
+            const packageData = new FormData();
+            packageData.append("username", currentActiveUser);
+            packageData.append("file", fileChooser.files[0]);
+
+            document.getElementById("statusMsg").innerText = "Processing upload...";
+
+            fetch("/api/vault/upload", { method: "POST", body: packageData })
+            .then(res => res.text())
+            .then(message => {
+                document.getElementById("statusMsg").innerText = message;
+                fileChooser.value = ""; 
+                refreshFolder(); 
+            });
+        }
+
+        function refreshFolder() {
+            const listElement = document.getElementById("fileDisplayList");
+            
+            fetch("/api/vault/view?username=" + currentActiveUser)
+            .then(res => res.json())
+            .then(pathsList => {
+                listElement.innerHTML = "";
+                if(pathsList.length === 0) {
+                    listElement.innerHTML = "<li>No files found in your storage window.</li>";
+                    return;
+                }
+                
+                for (let i = 0; i < pathsList.length; i++) {
+                    let fullPath = pathsList[i];
+                    
+                    let li = document.createElement("li");
+                    li.innerText = fullPath + "   ";
+
+                    let btn = document.createElement("button");
+                    btn.innerText = "Delete File";
+                    btn.style.background = "#dc3545";
+                    btn.style.padding = "3px 7px";
+                    btn.style.fontSize = "11px";
+                    btn.style.marginLeft = "10px";
+                    
+                    btn.onclick = function() {
+                        if(confirm("Confirm removal from vault?")) {
+                            removePhoto(fullPath);
+                        }
+                    };
+
+                    li.appendChild(btn);
+                    listElement.appendChild(li);
+                }
+            });
+        }
+
+        function removePhoto(pathString) {
+            const data = new FormData();
+            data.append("username", currentActiveUser);
+            data.append("filepath", pathString);
+
+            fetch("/api/vault/delete", { method: "POST", body: data })
+            .then(res => res.text())
+            .then(msg => {
+                document.getElementById("statusMsg").innerText = msg;
+                refreshFolder(); 
+            });
+        }
+    </script>
+</body>
+</html>
